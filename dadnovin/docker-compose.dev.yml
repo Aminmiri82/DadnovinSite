@@ -18,19 +18,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: dev
     container_name: dadnovin-nextjs
     restart: always
     ports:
       - "3000:3000"
       - "5555:5555"
     environment:
-      # Update the URL to use PostgreSQL format
       DATABASE_URL: "postgresql://postgres:YMCMBpass@postgres:5432/dadnovin_db"
       POSTGRES_HOST: postgres
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: YMCMBpass
       POSTGRES_DB: dadnovin_db
-
       NEXTAUTH_SECRET: "supersecret"
     volumes:
       - .:/app
@@ -38,8 +37,7 @@ services:
       - /app/.next
     depends_on:
       - postgres
-    command: >
-      sh -c "npx prisma migrate deploy && npm run dev"
+    command: sh -c "npx prisma migrate deploy && npm run dev"
 
 volumes:
   postgres_data:
