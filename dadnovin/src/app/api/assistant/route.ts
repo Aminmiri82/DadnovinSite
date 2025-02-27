@@ -1,124 +1,66 @@
-import { ChatOpenAI } from "@langchain/openai";
-import { ConversationChain } from "langchain/chains";
-import {
-  ChatPromptTemplate,
-  MessagesPlaceholder,
-} from "@langchain/core/prompts";
-import * as hub from "langchain/hub";
-import { BufferMemory } from "langchain/memory";
+import { createDeepSeek } from "@ai-sdk/deepseek";
+import { streamText } from "ai";
 import { NextRequest, NextResponse } from "next/server";
-import { loadOrCreateVectorStore } from "../../../lib/vectorStoreManager";
 import prisma from "@/lib/prisma";
-import { ChatMessageHistory } from "langchain/stores/message/in_memory";
 import { verifyToken } from "@/utils/auth";
+import { loadOrCreateVectorStore } from "../../../lib/vectorStoreManager";
 
-// Registry to store conversation chains in memory.
+// Registry to store conversation histories in memory
 const conversationRegistry: Record<
   string,
-  { chain: ConversationChain; createdAt: number }
+  { messages: any[]; createdAt: number }
 > = {};
 
-async function createNewConversationChain(existingHistory: any[] = []) {
-  // Create a streaming-enabled LLM.
-  const llm = new ChatOpenAI({
-    modelName: "deepseek-chat",
-    openAIApiKey: process.env.DEEPSEEK_API_KEY,
-    configuration: {
-      baseURL: "https://api.deepseek.com/v1",
-    },
-    temperature: 1,
-    streaming: true, // Enable streaming for later calls.
-  });
+// Create deepseek provider
+const deepseek = createDeepSeek({
+  apiKey: process.env.DEEPSEEK_API_KEY ?? "",
+  baseURL: "https://api.deepseek.com/v1",
+});
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not set");
-  }
-
-  const vectorStore = await loadOrCreateVectorStore(apiKey);
-
-  // Pull the base prompt from LangChain Hub.
-  const basePrompt = (await hub.pull(
-    "loulou/lil_dadnovin"
-  )) as ChatPromptTemplate;
-
-  // Build a prompt that accepts "history" and "context".
-  const promptWithHistory = ChatPromptTemplate.fromMessages([
-    ...basePrompt.promptMessages,
-    new MessagesPlaceholder("history"),
-    ["human", "{context}\n\nQuestion: {question}"],
-  ]);
-
-  // Initialize chat history with any existing messages.
-  const messageHistory = new ChatMessageHistory();
-  for (const msg of existingHistory) {
-    if (msg.type === "user") {
-      await messageHistory.addUserMessage(msg.content);
-    } else {
-      await messageHistory.addAIMessage(msg.content);
-    }
-  }
-
-  // Create a memory object using the chat history.
-  const memory = new BufferMemory({
-    returnMessages: true,
-    memoryKey: "history",
-    inputKey: "question",
-    chatHistory: messageHistory,
-  });
-
-  // Create the conversation chain.
-  const chain = new ConversationChain({
-    llm,
-    prompt: promptWithHistory,
-    memory,
-    verbose: true,
-  });
-
-  return { chain, vectorStore };
-}
+const SYSTEM_PROMPT = `Persian Legal Guide is a legal assistant fluent in Farsi,
+ designed to interpret legal queries and provide nuanced answers by referencing a comprehensive database of Persian law books.
+ what ever happens, you're only supposed to answer in Persian. You have to give short enough answers that will answer the users questions. 
+ If the users asked for more info on the matter, then give them the proper answer.
+ For the references just put the name of the document and the paragraph of the document in farsi. `;
 
 async function getOrCreateConversation(conversationId: string, userId: number) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not set");
-  }
-
-  // Load the conversation history from the database filtering by userId.
+  // Load the conversation history from the database filtering by userId
   const messages = await prisma.conversation.findMany({
     where: { conversationId, userId },
     orderBy: { createdAt: "asc" },
   });
 
-  const history = messages.map((msg: any) => ({
-    type: msg.sender,
-    content: msg.message,
-  }));
+  // Convert database messages to AI SDK format
+  const aiMessages = [];
 
-  // Use a combined key for the in-memory conversation registry.
+  // Add system prompt first
+  aiMessages.push({ role: "system", content: SYSTEM_PROMPT });
+
+  // Add conversation history
+  for (const msg of messages) {
+    const role = msg.sender === "user" ? "user" : "assistant";
+    aiMessages.push({ role, content: msg.message });
+  }
+
+  // Use a combined key for the in-memory conversation registry
   const conversationKey = `${userId}-${conversationId}`;
-  if (conversationRegistry[conversationKey]) {
-    const { chain } = conversationRegistry[conversationKey];
-    return {
-      chain,
-      vectorStore: await loadOrCreateVectorStore(apiKey),
+
+  if (!conversationRegistry[conversationKey]) {
+    conversationRegistry[conversationKey] = {
+      messages: aiMessages,
+      createdAt: Date.now(),
     };
   }
 
-  // Otherwise, create a new chain and store it.
-  const { chain, vectorStore } = await createNewConversationChain(history);
-
-  conversationRegistry[conversationKey] = {
-    chain,
-    createdAt: Date.now(),
+  return {
+    messages: conversationRegistry[conversationKey].messages,
+    vectorStore: await loadOrCreateVectorStore(),
   };
-
-  return { chain, vectorStore };
 }
 
 export async function POST(req: NextRequest) {
   try {
-    // ***** UPDATED: Use Authorization header with JWT *****
+    // JWT Authorization check
     const authHeader = req.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       console.log("No or invalid Authorization header");
@@ -132,9 +74,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const userId = Number(payload.userId);
-    // ***** END OF UPDATED JWT CHECK *****
 
-    // Check user's validTime in the database based on verified userId.
+    // Check user's subscription
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { validUntil: true },
@@ -205,7 +146,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Retrieve the conversation name from the database if it exists (filtered by userId).
+    // Retrieve the conversation name from the database if it exists (filtered by userId)
     const name =
       (
         await prisma.conversation.findFirst({
@@ -214,7 +155,7 @@ export async function POST(req: NextRequest) {
         })
       )?.name || `c${Date.now()}`;
 
-    // Save the user's message to the database.
+    // Save the user's message to the database
     await prisma.conversation.create({
       data: {
         userId,
@@ -225,19 +166,25 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Retrieve the existing conversation chain from our registry.
-    const { chain, vectorStore } = await getOrCreateConversation(
+    // Retrieve the existing conversation data from our registry
+    const { messages, vectorStore } = await getOrCreateConversation(
       conversationId,
       userId
     );
 
-    // Get additional context via vectorStore.
+    // Get additional context via vectorStore
     const searchResults = await vectorStore.similaritySearch(message, 5);
     const context = searchResults
       .map((doc: { pageContent: string }) => doc.pageContent)
       .join("\n");
 
-    // Prepare a streaming response.
+    // Add the user message with context to the messages array
+    messages.push({
+      role: "user",
+      content: `name: User - question: ${message}\n\nRelevant context:\n${context}`,
+    });
+
+    // Prepare a streaming response
     const encoder = new TextEncoder();
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -262,30 +209,28 @@ export async function POST(req: NextRequest) {
       try {
         let fullResponse = "";
 
-        // Use the conversation chain to process the new message.
-        await chain.call(
-          {
-            question: message,
-            context: `relevant context: ${context}`,
-          },
-          {
-            callbacks: [
-              {
-                handleLLMNewToken(token: string) {
-                  sendData(JSON.stringify({ data: token }));
-                  fullResponse += token;
-                },
-              },
-            ],
-          }
-        );
+        // Use Vercel AI SDK's streamText for generating a response
+        const { textStream } = await streamText({
+          model: deepseek("deepseek-chat"),
+          messages,
+          temperature: 1,
+        });
 
-        // Signal the end of streaming.
+        // Process the streaming response
+        for await (const chunk of textStream) {
+          sendData(JSON.stringify({ data: chunk }));
+          fullResponse += chunk;
+        }
+
+        // Signal the end of streaming
         sendEvent("end", JSON.stringify({ data: "[DONE]" }));
         await writer.ready;
         await writer.close();
 
-        // Save the AI's response to the database.
+        // Add the assistant response to the messages array
+        messages.push({ role: "assistant", content: fullResponse });
+
+        // Save the AI's response to the database
         await prisma.conversation.create({
           data: {
             userId,
@@ -317,4 +262,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
- 
