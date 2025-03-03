@@ -34,11 +34,13 @@ export default function Home() {
 
           {/* Foreground content with text shadow */}
           <div
-            className="relative text-center text-white p-5 z-10 space-y-6 max-w-xl mx-auto"
+            className="relative text-center text-white p-5 z-10 space-y-6 max-w-xl mx-auto bg-black/50 rounded-lg"
             style={{ textShadow: "2px 2px 4px rgba(0, 0, 0, 0.8)" }}
           >
             {/* Responsive heading sizes for mobile vs. desktop */}
-            <h1 className="text-4xl sm:text-6xl mb-2 font-bold">حقوق یار دادآفرین</h1>
+            <h1 className="text-4xl sm:text-6xl mb-2 font-bold">
+              حقوق یار دادآفرین
+            </h1>
 
             {user ? (
               // If logged in, show a fun icon or a greeting

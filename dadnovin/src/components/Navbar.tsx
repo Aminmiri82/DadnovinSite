@@ -31,9 +31,9 @@ export default function Navbar() {
       <div className="w-full flex items-center justify-between">
         {/* Logo / Brand */}
         <div>
-          <Link href="/" className="text-2xl font-bold">
+          {/* <Link href="/" className="text-2xl font-bold">
             مجموعه سامانه داد
-          </Link>
+          </Link> */}
         </div>
 
         {/* Hamburger Icon (visible on mobile) */}

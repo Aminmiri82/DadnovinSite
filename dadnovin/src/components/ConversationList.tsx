@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 
 interface Conversation {
   conversationId: string;
@@ -25,8 +25,16 @@ export default function ConversationList({
   onNewConversation,
   isMobile,
 }: ConversationListProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom when conversations change
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  }, [conversationList]);
+
   return (
-    // Left-to-right container overall
     <div
       dir="ltr"
       className={`${
@@ -46,8 +54,9 @@ export default function ConversationList({
 
       {/* Scrollable conversation list (LTR) */}
       <div
+        ref={listRef}
         className="flex-1 overflow-y-auto p-4"
-        style={{ color: "var(--foreground)" }}
+        style={{ color: "var(--foreground)", maxHeight: "100vh" }}
       >
         {conversationList.map((conv) => (
           <div
@@ -74,7 +83,7 @@ export default function ConversationList({
         ))}
       </div>
 
-      {/* New Conversation Button (LTR). We can optionally wrap just its label in RTL if needed */}
+      {/* New Conversation Button (LTR) */}
       <div className="p-4 border-t">
         <div dir="rtl">
           <button

@@ -31,6 +31,9 @@ services:
       POSTGRES_PASSWORD: YMCMBpass
       POSTGRES_DB: dadnovin_db
       NEXTAUTH_SECRET: "supersecret"
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+      NODE_ENV: development
     volumes:
       - .:/app
       - /app/node_modules

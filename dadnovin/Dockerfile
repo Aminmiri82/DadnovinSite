@@ -21,6 +21,11 @@ RUN npx prisma generate
 COPY . .
 # Create a data directory if it doesn't exist
 RUN mkdir -p data
+
+# Enable polling for file changes (Windows compatibility)
+ENV CHOKIDAR_USEPOLLING=true
+ENV WATCHPACK_POLLING=true
+
 # Set environment variable for development
 ENV NODE_ENV=development
 EXPOSE 3000
