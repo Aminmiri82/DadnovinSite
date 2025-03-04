@@ -112,7 +112,7 @@ async function loadOrCreateVectorStore() {
     return store;
   } catch (error) {
     console.log("Creating new vector store...");
-    const documents = await loadDocumentsFromDirectory("./data");
+    const documents = await loadDocumentsFromDirectory("./public/data");
     console.log(`Found ${documents.length} text chunks in data directory`);
 
     if (documents.length === 0) {

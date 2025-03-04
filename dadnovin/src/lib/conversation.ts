@@ -29,7 +29,7 @@ async function createNewConversationChain(existingHistory: any[] = []) {
     throw new Error("OPENAI_API_KEY is not set");
   }
 
-  const vectorStore = await loadOrCreateVectorStore(apiKey);
+  const vectorStore = await loadOrCreateVectorStore();
 
   // Pull the base prompt from LangChain Hub.
   const basePrompt = (await hub.pull("loulou/lil_dadnovin")) as ChatPromptTemplate;
@@ -96,7 +96,7 @@ export async function getOrCreateConversation(
     const { chain } = conversationRegistry[conversationKey];
     return {
       chain,
-      vectorStore: await loadOrCreateVectorStore(apiKey),
+      vectorStore: await loadOrCreateVectorStore(),
     };
   }
 
