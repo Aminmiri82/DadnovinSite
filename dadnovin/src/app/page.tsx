@@ -21,15 +21,15 @@ export default function Home() {
           {/* Background image & overlay */}
           <div className="absolute inset-0">
             <div
-              className="absolute inset-0 bg-black/50"
+              className="absolute inset-0"
               style={{
-                backgroundImage: "url('/assets/newBG.jpeg')",
-                backgroundPosition: "top center",
+                backgroundImage: "url('/assets/background.jpg')",
+                backgroundPosition: "center center",
                 backgroundSize: "cover",
                 backgroundRepeat: "no-repeat",
-                height: "85vh",
               }}
             />
+            <div className="absolute inset-0 bg-black/30" />
           </div>
 
           {/* Foreground content with text shadow */}
@@ -39,7 +39,7 @@ export default function Home() {
           >
             {/* Responsive heading sizes for mobile vs. desktop */}
             <h1 className="text-4xl sm:text-6xl mb-2 font-bold">
-              حقوق یار دادآفرین
+            سامانه های هوش مصنوعی ایرانی
             </h1>
 
             {user ? (

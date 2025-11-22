@@ -15,7 +15,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 # Copy Prisma schema and generate Prisma client
-COPY prisma ./prisma
+COPY prisma/ ./prisma/
 RUN npx prisma generate
 # Copy the rest of the project files
 COPY . .
@@ -41,7 +41,9 @@ FROM prod_base AS prod_deps
 RUN apk add --no-cache libc6-compat python3 make g++ gcc
 COPY package.json package-lock.json* ./
 RUN npm ci
-COPY prisma ./prisma
+# Create prisma directory and copy schema files
+RUN mkdir -p ./prisma
+COPY prisma/ ./prisma/
 RUN npx prisma generate
 
 # Build the app

@@ -11,81 +11,95 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isAccountPage = pathname === "/account";
-  const accountLinkProps = {
-    href: isAccountPage ? "/" : "/account",
-    className:
-      "block md:inline-block text-lg bg-white dark:bg-gray-200 text-black dark:text-gray-900 px-4 py-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-300 transition-colors",
+
+  const getAccountButtonText = () => {
+    if (isAccountPage) return "بازگشت به خانه";
+    if (user) return user.firstName || "حساب کاربری";
+    return "حساب کاربری";
   };
 
-  const accountLinkText = user
-    ? isAccountPage
-      ? "بازگشت به خانه"
-      : user.firstName
-    : isAccountPage
-    ? "بازگشت به خانه"
-    : "حساب کاربری";
+  const navLinks = [
+    { name: "دستیار هوش مصنوعی", href: "/dadafarin_assistant" },
+  ];
 
   return (
-    <header className="w-full bg-black text-white px-6 py-3">
-      {/* The inner div now spans the full width */}
-      <div className="w-full flex items-center justify-between">
-        {/* Logo / Brand */}
-        <div>
-          {/* <Link href="/" className="text-2xl font-bold">
-            مجموعه سامانه داد
-          </Link> */}
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-black/90 backdrop-blur-md text-white">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        {/* Logo */}
+        <div className="flex shrink-0 items-center">
+          <Link 
+            href="/" 
+            className="text-xl font-bold tracking-tight hover:text-gray-300 transition-colors"
+          >
+            سامانه های هوش مصنوعی ایرانی
+          </Link>
         </div>
 
-        {/* Hamburger Icon (visible on mobile) */}
-        <button
-          className="md:hidden text-white focus:outline-none"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle menu"
-        >
-          {/* Simple "Hamburger" icon (3 lines) */}
-          <svg className="h-6 w-6 fill-current" viewBox="0 0 24 24">
-            {mobileOpen ? (
-              // Close icon if menu open
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M6.225 4.811A1 1 0 017.64 3.395L12 7.757l4.36-4.362a1 1 0 011.414 1.416L13.414 9.17l4.36 4.362a1 1 0 01-1.416 1.414L12 10.586l-4.362 4.36a1 1 0 01-1.414-1.415l4.36-4.36-4.36-4.36z"
-              />
-            ) : (
-              // Hamburger icon if menu closed
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"
-              />
-            )}
-          </svg>
-        </button>
-
-        {/* Desktop Nav Items */}
-        <nav className="hidden md:flex items-center gap-6">
-          <Link href="/dadafarin_assistant" className="text-lg">
-            سامانه دادآفرین
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center gap-8">
+          {navLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="text-sm font-medium hover:text-gray-300 transition-colors"
+            >
+              {link.name}
+            </Link>
+          ))}
+          
+          <Link
+            href={isAccountPage ? "/" : "/account"}
+            className="rounded-full bg-white px-5 py-2 text-sm font-medium text-black transition-colors hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-white/20"
+          >
+            {getAccountButtonText()}
           </Link>
-          <Link {...accountLinkProps}>{accountLinkText}</Link>
         </nav>
+
+        {/* Mobile Menu Button */}
+        <div className="md:hidden">
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-white/10 hover:text-white focus:outline-none"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-expanded={mobileOpen}
+            aria-label="Toggle navigation menu"
+          >
+            {mobileOpen ? (
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* Mobile Nav Items (collapsible) */}
+      {/* Mobile Menu */}
       {mobileOpen && (
-        <nav className="flex flex-col gap-4 mt-3 md:hidden">
-          <Link
-            href="/dadafarin_assistant"
-            className="text-lg px-4 py-2 hover:bg-gray-700 transition-colors"
-            onClick={() => setMobileOpen(false)}
-          >
-            سامانه دادآفرین
-          </Link>
-
-          <Link {...accountLinkProps} onClick={() => setMobileOpen(false)}>
-            {accountLinkText}
-          </Link>
-        </nav>
+        <div className="md:hidden border-t border-white/10 bg-black">
+          <div className="space-y-1 px-4 py-4">
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="block rounded-md px-3 py-2 text-base font-medium text-gray-300 hover:bg-white/10 hover:text-white"
+                onClick={() => setMobileOpen(false)}
+              >
+                {link.name}
+              </Link>
+            ))}
+            <Link
+              href={isAccountPage ? "/" : "/account"}
+              className="block w-full text-center mt-4 rounded-md bg-white px-3 py-2 text-base font-medium text-black hover:bg-gray-200"
+              onClick={() => setMobileOpen(false)}
+            >
+              {getAccountButtonText()}
+            </Link>
+          </div>
+        </div>
       )}
     </header>
   );
