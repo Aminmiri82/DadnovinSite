@@ -53,14 +53,14 @@ COPY --from=prod_deps /app/node_modules ./node_modules
 COPY --from=prod_deps /app/node_modules/.prisma ./node_modules/.prisma
 COPY . .
 # Disable Next.js telemetry
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # Final production runner image
 FROM prod_base AS prod_runner
 WORKDIR /app
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 # Create a non-root user for better security
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 # Copy production artifacts
@@ -76,6 +76,6 @@ COPY --from=prod_builder /app/prisma ./prisma
 RUN chown -R nextjs:nodejs /app
 USER nextjs
 EXPOSE 3000
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 CMD ["node", "server.js"]
