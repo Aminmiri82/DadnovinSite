@@ -2,7 +2,6 @@
 
 # dependencies
 /node_modules
-/package-lock.json
 /old version/node_modules
 /old version/package-lock.json
 
