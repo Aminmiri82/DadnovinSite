@@ -11,6 +11,38 @@ const conversationRegistry: Record<
 	{ messages: any[]; createdAt: number }
 > = {};
 
+// Cleanup old conversations from memory (prevent memory leak)
+const CONVERSATION_TTL = 2 * 60 * 60 * 1000; // 2 hours
+const cleanupOldConversations = () => {
+	const now = Date.now();
+	let cleaned = 0;
+	for (const key in conversationRegistry) {
+		if (now - conversationRegistry[key].createdAt > CONVERSATION_TTL) {
+			delete conversationRegistry[key];
+			cleaned++;
+		}
+	}
+	if (cleaned > 0) {
+		console.log(`Cleaned up ${cleaned} old conversations from memory`);
+	}
+};
+
+// Run cleanup every 30 minutes
+setInterval(cleanupOldConversations, 30 * 60 * 1000);
+
+// Limit messages per conversation to prevent unbounded memory growth
+const MAX_MESSAGES_IN_MEMORY = 50; // ~25 exchanges (system + user/assistant pairs)
+
+// Cache vector store at module level (load once, not on every request)
+let cachedVectorStore: any = null;
+const getVectorStore = async () => {
+	if (!cachedVectorStore) {
+		console.log("Loading vector store for the first time...");
+		cachedVectorStore = await loadOrCreateVectorStore();
+	}
+	return cachedVectorStore;
+};
+
 // Create deepseek provider
 const deepseek = createDeepSeek({
 	apiKey: process.env.DEEPSEEK_API_KEY ?? "",
@@ -156,11 +188,24 @@ async function getOrCreateConversation(conversationId: string, userId: number) {
 			messages: aiMessages,
 			createdAt: Date.now(),
 		};
+	} else {
+		// Update the createdAt timestamp to keep active conversations in memory
+		conversationRegistry[conversationKey].createdAt = Date.now();
+	}
+
+	// Limit message history to prevent unbounded memory growth
+	const messages = conversationRegistry[conversationKey].messages;
+	if (messages.length > MAX_MESSAGES_IN_MEMORY) {
+		// Keep system message + last N messages
+		const systemMsg = messages[0];
+		const recentMessages = messages.slice(-MAX_MESSAGES_IN_MEMORY + 1);
+		conversationRegistry[conversationKey].messages = [systemMsg, ...recentMessages];
+		console.log(`Trimmed conversation ${conversationKey} to ${MAX_MESSAGES_IN_MEMORY} messages`);
 	}
 
 	return {
 		messages: conversationRegistry[conversationKey].messages,
-		vectorStore: await loadOrCreateVectorStore(),
+		vectorStore: await getVectorStore(),
 	};
 }
 
