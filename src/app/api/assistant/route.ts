@@ -163,7 +163,7 @@ INSTRUCTIONS
 
 async function getOrCreateConversation(conversationId: string, userId: number) {
 	// Load the conversation history from the database filtering by userId
-	const messages = await prisma.conversation.findMany({
+	const dbMessages = await prisma.conversation.findMany({
 		where: { conversationId, userId },
 		orderBy: { createdAt: "asc" },
 	});
@@ -175,7 +175,7 @@ async function getOrCreateConversation(conversationId: string, userId: number) {
 	aiMessages.push({ role: "system", content: SYSTEM_PROMPT });
 
 	// Add conversation history
-	for (const msg of messages) {
+	for (const msg of dbMessages) {
 		const role = msg.sender === "user" ? "user" : "assistant";
 		aiMessages.push({ role, content: msg.message });
 	}
@@ -194,11 +194,11 @@ async function getOrCreateConversation(conversationId: string, userId: number) {
 	}
 
 	// Limit message history to prevent unbounded memory growth
-	const messages = conversationRegistry[conversationKey].messages;
-	if (messages.length > MAX_MESSAGES_IN_MEMORY) {
+	const registryMessages = conversationRegistry[conversationKey].messages;
+	if (registryMessages.length > MAX_MESSAGES_IN_MEMORY) {
 		// Keep system message + last N messages
-		const systemMsg = messages[0];
-		const recentMessages = messages.slice(-MAX_MESSAGES_IN_MEMORY + 1);
+		const systemMsg = registryMessages[0];
+		const recentMessages = registryMessages.slice(-MAX_MESSAGES_IN_MEMORY + 1);
 		conversationRegistry[conversationKey].messages = [systemMsg, ...recentMessages];
 		console.log(`Trimmed conversation ${conversationKey} to ${MAX_MESSAGES_IN_MEMORY} messages`);
 	}
