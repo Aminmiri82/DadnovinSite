@@ -12,26 +12,43 @@ const conversationRegistry: Record<
 > = {};
 
 // Cleanup old conversations from memory (prevent memory leak)
-const CONVERSATION_TTL = 2 * 60 * 60 * 1000; // 2 hours
+const CONVERSATION_TTL = 30 * 60 * 1000; // Reduced to 30 minutes for low-memory VPS
+const MAX_REGISTRY_SIZE = 10; // Maximum number of conversations to keep in memory
+
 const cleanupOldConversations = () => {
 	const now = Date.now();
 	let cleaned = 0;
+
+	// Remove old conversations
 	for (const key in conversationRegistry) {
 		if (now - conversationRegistry[key].createdAt > CONVERSATION_TTL) {
 			delete conversationRegistry[key];
 			cleaned++;
 		}
 	}
+
+	// If still too many, remove oldest ones
+	const entries = Object.entries(conversationRegistry);
+	if (entries.length > MAX_REGISTRY_SIZE) {
+		entries
+			.sort((a, b) => a[1].createdAt - b[1].createdAt)
+			.slice(0, entries.length - MAX_REGISTRY_SIZE)
+			.forEach(([key]) => {
+				delete conversationRegistry[key];
+				cleaned++;
+			});
+	}
+
 	if (cleaned > 0) {
-		console.log(`Cleaned up ${cleaned} old conversations from memory`);
+		console.log(`Cleaned up ${cleaned} conversations. Registry size: ${Object.keys(conversationRegistry).length}`);
 	}
 };
 
-// Run cleanup every 30 minutes
-setInterval(cleanupOldConversations, 30 * 60 * 1000);
+// Run cleanup on every request instead of setInterval (safer in serverless/edge)
+// setInterval can cause issues with Next.js hot reloading and memory leaks
 
 // Limit messages per conversation to prevent unbounded memory growth
-const MAX_MESSAGES_IN_MEMORY = 50; // ~25 exchanges (system + user/assistant pairs)
+const MAX_MESSAGES_IN_MEMORY = 20; // Reduced from 50 to save memory
 
 // Cache vector store at module level (load once, not on every request)
 let cachedVectorStore: any = null;
@@ -211,6 +228,9 @@ async function getOrCreateConversation(conversationId: string, userId: number) {
 
 export async function POST(req: NextRequest) {
 	try {
+		// Run cleanup on each request (instead of setInterval)
+		cleanupOldConversations();
+
 		// JWT Authorization check
 		const authHeader = req.headers.get("Authorization");
 		if (!authHeader || !authHeader.startsWith("Bearer ")) {
