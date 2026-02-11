@@ -38,7 +38,7 @@ WORKDIR /app
 
 # Install production build dependencies
 FROM prod_base AS prod_deps
-RUN apk add --no-cache libc6-compat python3 make g++ gcc
+RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json* ./
 RUN npm ci
 # Create prisma directory and copy schema files

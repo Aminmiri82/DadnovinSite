@@ -58,26 +58,10 @@ export default function DadafarinAssistant() {
     fetchConversations();
   }, [fetchConversations]);
 
-  // Initialize conversation once we have conversationId + user + token
+  // Refresh conversation list when conversation changes
   useEffect(() => {
     if (currentConversationId && user && token) {
-      fetch("/api/assistant/init", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ conversationId: currentConversationId }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          console.log("Conversation initialized:", data);
-          // Immediately refresh list after creating a new conversation
-          fetchConversations();
-        })
-        .catch((err) =>
-          console.error("Failed to initialize conversation:", err)
-        );
+      fetchConversations();
     }
   }, [currentConversationId, user, token, fetchConversations]);
 

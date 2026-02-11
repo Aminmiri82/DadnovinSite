@@ -1,64 +1,11 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
-import { streamText } from "ai";
+import { streamText, type CoreMessage } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyToken } from "@/utils/auth";
-import { loadOrCreateVectorStore } from "../../../lib/vectorStoreManager";
 
-// Registry to store conversation histories in memory
-const conversationRegistry: Record<
-	string,
-	{ messages: any[]; createdAt: number }
-> = {};
-
-// Cleanup old conversations from memory (prevent memory leak)
-const CONVERSATION_TTL = 30 * 60 * 1000; // Reduced to 30 minutes for low-memory VPS
-const MAX_REGISTRY_SIZE = 10; // Maximum number of conversations to keep in memory
-
-const cleanupOldConversations = () => {
-	const now = Date.now();
-	let cleaned = 0;
-
-	// Remove old conversations
-	for (const key in conversationRegistry) {
-		if (now - conversationRegistry[key].createdAt > CONVERSATION_TTL) {
-			delete conversationRegistry[key];
-			cleaned++;
-		}
-	}
-
-	// If still too many, remove oldest ones
-	const entries = Object.entries(conversationRegistry);
-	if (entries.length > MAX_REGISTRY_SIZE) {
-		entries
-			.sort((a, b) => a[1].createdAt - b[1].createdAt)
-			.slice(0, entries.length - MAX_REGISTRY_SIZE)
-			.forEach(([key]) => {
-				delete conversationRegistry[key];
-				cleaned++;
-			});
-	}
-
-	if (cleaned > 0) {
-		console.log(`Cleaned up ${cleaned} conversations. Registry size: ${Object.keys(conversationRegistry).length}`);
-	}
-};
-
-// Run cleanup on every request instead of setInterval (safer in serverless/edge)
-// setInterval can cause issues with Next.js hot reloading and memory leaks
-
-// Limit messages per conversation to prevent unbounded memory growth
-const MAX_MESSAGES_IN_MEMORY = 20; // Reduced from 50 to save memory
-
-// Cache vector store at module level (load once, not on every request)
-let cachedVectorStore: any = null;
-const getVectorStore = async () => {
-	if (!cachedVectorStore) {
-		console.log("Loading vector store for the first time...");
-		cachedVectorStore = await loadOrCreateVectorStore();
-	}
-	return cachedVectorStore;
-};
+// Limit how many past messages we send to the AI (system + last N)
+const MAX_HISTORY_MESSAGES = 20;
 
 // Create deepseek provider
 const deepseek = createDeepSeek({
@@ -66,7 +13,7 @@ const deepseek = createDeepSeek({
 	baseURL: "https://api.deepseek.com/v1",
 });
 
-const SYSTEM_PROMPT = `You are “سامانه هوش مصنوعی هفت گانه ایران‌محور” — a unified AI that contains seven distinct intelligent subsystems.
+const SYSTEM_PROMPT = `You are "سامانه هوش مصنوعی هفت گانه ایران‌محور" — a unified AI that contains seven distinct intelligent subsystems.
 Each subsystem has its own mission, knowledge base, and tone.
 
 When the conversation begins, show the following numbered menu in Persian:
@@ -125,7 +72,7 @@ SYSTEM DEFINITIONS
 
 ⚖️ ۷. وکالت‌یار – سامانه هوشمند انتخاب وکیل تخصصی
 Mission:
-A structured legal-intelligence system that analyzes the user’s situation, identifies the exact legal subject, determines the correct specialized attorney field, provides relevant legal articles, and offers a curated alphabetical list of lawyers in that specialization.
+A structured legal-intelligence system that analyzes the user's situation, identifies the exact legal subject, determines the correct specialized attorney field, provides relevant legal articles, and offers a curated alphabetical list of lawyers in that specialization.
 
 Capabilities:
 
@@ -172,76 +119,23 @@ Formal, structured, informative, neutral, legal-oriented.
 INSTRUCTIONS
 ──────────────────────────────
 	•	When a subsystem is active, write only as that system.
-	•	“بازگشت به منو” returns to the main menu.
+	•	"بازگشت به منو" returns to the main menu.
 	•	Never mix systems unless explicitly asked.
 	•	Begin by greeting the user and displaying the menu.
 
 ─────────────────────────────────`;
 
-async function getOrCreateConversation(conversationId: string, userId: number) {
-	// Load the conversation history from the database filtering by userId
-	const dbMessages = await prisma.conversation.findMany({
-		where: { conversationId, userId },
-		orderBy: { createdAt: "asc" },
-	});
-
-	// Convert database messages to AI SDK format
-	const aiMessages = [];
-
-	// Add system prompt first
-	aiMessages.push({ role: "system", content: SYSTEM_PROMPT });
-
-	// Add conversation history
-	for (const msg of dbMessages) {
-		const role = msg.sender === "user" ? "user" : "assistant";
-		aiMessages.push({ role, content: msg.message });
-	}
-
-	// Use a combined key for the in-memory conversation registry
-	const conversationKey = `${userId}-${conversationId}`;
-
-	if (!conversationRegistry[conversationKey]) {
-		conversationRegistry[conversationKey] = {
-			messages: aiMessages,
-			createdAt: Date.now(),
-		};
-	} else {
-		// Update the createdAt timestamp to keep active conversations in memory
-		conversationRegistry[conversationKey].createdAt = Date.now();
-	}
-
-	// Limit message history to prevent unbounded memory growth
-	const registryMessages = conversationRegistry[conversationKey].messages;
-	if (registryMessages.length > MAX_MESSAGES_IN_MEMORY) {
-		// Keep system message + last N messages
-		const systemMsg = registryMessages[0];
-		const recentMessages = registryMessages.slice(-MAX_MESSAGES_IN_MEMORY + 1);
-		conversationRegistry[conversationKey].messages = [systemMsg, ...recentMessages];
-		console.log(`Trimmed conversation ${conversationKey} to ${MAX_MESSAGES_IN_MEMORY} messages`);
-	}
-
-	return {
-		messages: conversationRegistry[conversationKey].messages,
-		vectorStore: await getVectorStore(),
-	};
-}
-
 export async function POST(req: NextRequest) {
 	try {
-		// Run cleanup on each request (instead of setInterval)
-		cleanupOldConversations();
-
 		// JWT Authorization check
 		const authHeader = req.headers.get("Authorization");
 		if (!authHeader || !authHeader.startsWith("Bearer ")) {
-			console.log("No or invalid Authorization header");
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
 		const token = authHeader.split(" ")[1];
 		const payload = await verifyToken(token);
 		if (!payload) {
-			console.log("Invalid token");
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 		const userId = Number(payload.userId);
@@ -252,18 +146,11 @@ export async function POST(req: NextRequest) {
 			select: { validUntil: true },
 		});
 
-		console.log("User subscription check:", {
-			userId,
-			validUntil: user?.validUntil,
-		});
-
 		if (!user) {
-			console.log("User not found:", userId);
 			return NextResponse.json({ error: "User not found" }, { status: 404 });
 		}
 
 		if (!user.validUntil) {
-			console.log("No valid subscription for user:", userId);
 			return NextResponse.json(
 				{
 					error: "Subscription required",
@@ -277,22 +164,13 @@ export async function POST(req: NextRequest) {
 			);
 		}
 
-		// Convert validUntil to Date object
 		const validUntil = new Date(user.validUntil);
-		// Get current time in Iran
 		const iranTime = new Date().toLocaleString("en-US", {
 			timeZone: "Asia/Tehran",
 		});
 		const currentIranTime = new Date(iranTime);
 
-		console.log("Time check:", {
-			validUntil,
-			currentIranTime,
-			isExpired: validUntil < currentIranTime,
-		});
-
 		if (validUntil < currentIranTime) {
-			console.log("Subscription expired for user:", userId);
 			return NextResponse.json(
 				{
 					error: "Subscription expired",
@@ -317,7 +195,7 @@ export async function POST(req: NextRequest) {
 			);
 		}
 
-		// Retrieve the conversation name from the database if it exists (filtered by userId)
+		// Retrieve the conversation name from the database if it exists
 		const name =
 			(
 				await prisma.conversation.findFirst({
@@ -337,23 +215,25 @@ export async function POST(req: NextRequest) {
 			},
 		});
 
-		// Retrieve the existing conversation data from our registry
-		const { messages, vectorStore } = await getOrCreateConversation(
-			conversationId,
-			userId
-		);
-
-		// Get additional context via vectorStore
-		const searchResults = await vectorStore.similaritySearch(message, 5);
-		const context = searchResults
-			.map((doc: { pageContent: string }) => doc.pageContent)
-			.join("\n");
-
-		// Add the user message with context to the messages array
-		messages.push({
-			role: "user",
-			content: `name: User - question: ${message}\n\nRelevant context:\n${context}`,
+		// Load conversation history from database (no in-memory registry needed)
+		const dbMessages = await prisma.conversation.findMany({
+			where: { conversationId, userId },
+			orderBy: { createdAt: "asc" },
+			// Only fetch the last N messages to limit memory and token usage
+			take: MAX_HISTORY_MESSAGES,
 		});
+
+		// Build messages array for the AI
+		const messages: CoreMessage[] = [
+			{ role: "system", content: SYSTEM_PROMPT },
+		];
+
+		for (const msg of dbMessages) {
+			messages.push({
+				role: msg.sender === "user" ? "user" : "assistant",
+				content: msg.message,
+			});
+		}
 
 		// Prepare a streaming response
 		const encoder = new TextEncoder();
@@ -368,38 +248,24 @@ export async function POST(req: NextRequest) {
 			writer.write(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
 		};
 
-		// Logging timezone info
-		console.log({
-			serverTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-			serverTime: new Date().toString(),
-			serverTimeUTC: new Date().toUTCString(),
-			envTZ: process.env.TZ,
-		});
-
 		(async () => {
 			try {
 				let fullResponse = "";
 
-				// Use Vercel AI SDK's streamText for generating a response
 				const { textStream } = await streamText({
 					model: deepseek("deepseek-chat"),
 					messages,
 					temperature: 1,
 				});
 
-				// Process the streaming response
 				for await (const chunk of textStream) {
 					sendData(JSON.stringify({ data: chunk }));
 					fullResponse += chunk;
 				}
 
-				// Signal the end of streaming
 				sendEvent("end", JSON.stringify({ data: "[DONE]" }));
 				await writer.ready;
 				await writer.close();
-
-				// Add the assistant response to the messages array
-				messages.push({ role: "assistant", content: fullResponse });
 
 				// Save the AI's response to the database
 				await prisma.conversation.create({
@@ -413,8 +279,12 @@ export async function POST(req: NextRequest) {
 				});
 			} catch (error) {
 				console.error("Streaming error:", error);
-				sendEvent("error", JSON.stringify({ error: "Streaming failed" }));
-				await writer.close();
+				try {
+					sendEvent("error", JSON.stringify({ error: "Streaming failed" }));
+					await writer.close();
+				} catch {
+					// Writer may already be closed
+				}
 			}
 		})();
 
